@@ -1,0 +1,33 @@
+name: Gitslice CI pull
+
+on: 
+  push
+        
+jobs:
+  gitslice-pull:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [10.16.0]
+    steps:
+      - name: check out repository
+        uses: actions/checkout@v2
+        with: 
+          token: ${{ secrets.GITSLICE_TOKEN }}
+          ref: master
+      
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+      
+      - name: Install GitSlice and setup Bot
+        run: |
+          npm install -g https://github.com/GitStartHQ/git-slice.git#setup-githubci
+          git config --global user.email ${{ secrets.EMAIL }}
+          git config --global user.name ${{ secrets.USERNAME }}
+
+      - name: gitslice-pull
+        run: |
+          git fetch -f
+          git reset --hard origin/master && git pull origin master && git-slice pull --username ${{ secrets.USERNAME }} --password ${{ secrets.PASSWORD }} && git push origin master

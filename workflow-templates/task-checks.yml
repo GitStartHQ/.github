@@ -3,7 +3,7 @@
 # Each key under paths creates a checklist with those questions 
 # whenever any file that matches that path is updated in the PR
 # paths:
-#   "/**":
+#   "*.*":
 #     - Did you remember to link time doctor tasks?
 #     - Does PR have task link?
 #     - Have you recorded a loom video demoing new features added?

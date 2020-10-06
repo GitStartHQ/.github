@@ -14,7 +14,7 @@ on:
         required: true
       forcePush:
         description: 'Force push branch ?'
-        default: true
+        default: 'true'
         required: false
 
 jobs:

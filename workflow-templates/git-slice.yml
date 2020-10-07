@@ -17,6 +17,9 @@ on:
         default: 'true'
         required: false
 
+env:
+  GIT_SLICE_DEFAULT_BRANCH: master
+
 jobs:
   gitslice-pull:
     runs-on: ubuntu-latest
@@ -28,7 +31,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           token: ${{ secrets.GITSLICE_TOKEN }}
-          ref: master
+          ref: ${{ env.GIT_SLICE_DEFAULT_BRANCH }}
 
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v1
@@ -44,7 +47,7 @@ jobs:
       - name: Gitslice pull
         run: |
           git fetch -f
-          git reset --hard origin/master && git pull origin master && git-slice pull --username ${{ secrets.USERNAME }} --password ${{ secrets.PASSWORD }} && git push origin master
+          git reset --hard origin/$GIT_SLICE_DEFAULT_BRANCH && git pull origin $GIT_SLICE_DEFAULT_BRANCH && git-slice pull --username ${{ secrets.USERNAME }} --password ${{ secrets.PASSWORD }} && git push origin $GIT_SLICE_DEFAULT_BRANCH
 
   gitslice-push:
     needs: gitslice-pull
@@ -78,7 +81,7 @@ jobs:
           git branch
           git checkout ${{ github.event.inputs.branch }}
           git pull origin ${{ github.event.inputs.branch }}
-          git merge origin/master
+          git merge origin/$GIT_SLICE_DEFAULT_BRANCH
           git push origin ${{ github.event.inputs.branch }}
           git status
           git-slice push --branch ${{ github.event.inputs.branch }} --message "${{ github.event.inputs.clientCommitMessage }}" --author-name ${{ secrets.USERNAME }} --author-email ${{ secrets.EMAIL }} --password ${{ secrets.PASSWORD }} --force-push ${{ github.event.inputs.forcePush }}

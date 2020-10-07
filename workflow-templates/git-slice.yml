@@ -12,6 +12,10 @@ on:
       branch:
         description: 'Branch to push'
         required: true
+      forcePush:
+        description: 'Force push branch ?'
+        default: 'true'
+        required: false
 
 jobs:
   gitslice-pull:
@@ -77,4 +81,4 @@ jobs:
           git merge origin/master
           git push origin ${{ github.event.inputs.branch }}
           git status
-          git-slice push --branch ${{ github.event.inputs.branch }} --message "${{ github.event.inputs.clientCommitMessage }}" --author-name ${{ secrets.USERNAME }} --author-email ${{ secrets.EMAIL }} --password ${{ secrets.PASSWORD }}
+          git-slice push --branch ${{ github.event.inputs.branch }} --message "${{ github.event.inputs.clientCommitMessage }}" --author-name ${{ secrets.USERNAME }} --author-email ${{ secrets.EMAIL }} --password ${{ secrets.PASSWORD }} --force-push ${{ github.event.inputs.forcePush }}

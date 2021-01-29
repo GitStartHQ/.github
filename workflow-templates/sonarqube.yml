@@ -1,0 +1,119 @@
+name: Node CI
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [12.x]
+
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.5.0
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v1
+
+      # Yarn caching (Remove this if you are using npm)
+      - name: Get yarn cache directory path
+        id: yarn-cache-dir-path
+        run: echo "::set-output name=dir::$(yarn cache dir)"
+
+      # Yarn caching (Remove this if you are using npm)
+      - uses: actions/cache@v2
+        id: yarn-cache # use this to check for `cache-hit` (`steps.yarn-cache.outputs.cache-hit != 'true'`)
+        with:
+          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+
+      # Npm caching (Remove this if you are using yarn)
+      - uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Yarn install
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Npm install
+        run: |
+          yarn ci
+
+      # Do other check/build steps
+      # ...
+
+      # Run test with jest-junit and jest-sonar-reporter packages
+      # In package.json:
+      # "jestSonar": {
+      #   "reportPath": "reports",
+      #   "reportFile": "test-reporter.xml",
+      #   "indent": 4,
+      #   "useRelativePath": true
+      # }
+      - name: Unit Test
+        run: |
+          npm run test -- --coverage --watchAll=false --ci --runInBand --reporters=default --reporters=jest-junit --testResultsProcessor=jest-sonar-reporter
+          yarn test --coverage --watchAll=false --ci --runInBand --reporters=default --reporters=jest-junit --testResultsProcessor=jest-sonar-reporter
+
+      # Modify test generated report files to match Github Actions System
+      - name: Persist coverage to workspace
+        run: |
+          sed -i "s|$GITHUB_WORKSPACE|/github/workspace|g" packages/lucid/coverage/lcov.info
+          sed -i "s|$GITHUB_WORKSPACE|/github/workspace|g" packages/lucid/reports/test-reporter.xml
+          sed -i "s|$GITHUB_WORKSPACE|/github/workspace|g" packages/playground/coverage/lcov.info
+          sed -i "s|$GITHUB_WORKSPACE|/github/workspace|g" packages/playground/reports/test-reporter.xml
+          sed -i "s|$GITHUB_WORKSPACE|/github/workspace|g" packages/json-editor/coverage/lcov.info
+          sed -i "s|$GITHUB_WORKSPACE|/github/workspace|g" packages/json-editor/reports/test-reporter.xml
+
+      - name: Inject slug/short variables
+        uses: rlespinasse/github-slug-action@v2.x
+
+      - uses: jwalton/gh-find-current-pr@v1
+        id: findPr
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # "master dev staging" below is the protected branches
+      - name: SonarQube Scan PR
+        if: env.PR && (!contains('master dev staging', env.GITHUB_REF_SLUG))
+        run: |
+          echo "Scanning PR $PR"
+          cat << EOF >> sonar-project.properties
+          sonar.pullrequest.branch=$GITHUB_REF_SLUG
+          sonar.pullrequest.key=$PR
+          sonar.projectVersion=$GITHUB_SHA
+          EOF
+        env:
+          PR: ${{ steps.findPr.outputs.pr }}
+
+      # "master dev staging" below is the protected branches
+      - name: SonarQube Scan Branch
+        if: env.PR && (!contains('master dev staging', env.GITHUB_REF_SLUG))
+        run: |
+          echo "Scanning branch $GITHUB_REF_SLUG"
+          cat << EOF >> sonar-project.properties
+          sonar.branch.name=$GITHUB_REF_SLUG
+          sonar.projectVersion=$GITHUB_SHA
+          EOF
+        env:
+          PR: ${{ steps.findPr.outputs.pr }}
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarcloud-github-action@master
+        env:
+          SONARCLOUD_URL: ${{ secrets.SONAR_HOST_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

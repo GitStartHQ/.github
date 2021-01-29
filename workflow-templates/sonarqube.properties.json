@@ -1,0 +1,6 @@
+{
+  "name": "SonarQube Scanner CI",
+  "description": "SonarQube Scanner CI",
+  "iconName": "sonarqube",
+  "filePatterns": ["sonar-project.properties"]
+}

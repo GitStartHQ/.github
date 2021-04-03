@@ -1,0 +1,26 @@
+name: Gitslice v2 CI
+
+on:
+  push:
+    branches:
+      - '!master'
+
+env:
+  GIT_SLICE_DEFAULT_BRANCH: main
+
+jobs:
+  gitslice-pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Git Slice Pull
+        uses: GitStartHQ/actions/GitSlicePull@git-slice
+        with:
+          slice_git_username: gitstart
+          upstream_git_username: gitstart
+          upstream_git_email: gitstart@users.noreply.github.com
+          upstream_github_token: ${{ secrets.GITSTART_BOT_TOKEN }}
+          slice_default_branch: ${{ env.GIT_SLICE_DEFAULT_BRANCH }}
+          slice_github_token: ${{ secrets.GITHUB_TOKEN }}

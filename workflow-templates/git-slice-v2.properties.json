@@ -1,0 +1,6 @@
+{
+  "name": "GitSlice V2 CI Workflow",
+  "description": "GitSlice V2 CI Workflow template.",
+  "iconName": "git-slice-ci",
+  "filePatterns": ["git-slice.json"]
+}

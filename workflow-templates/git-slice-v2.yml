@@ -35,7 +35,7 @@ jobs:
         with:
           fetch-depth: 1
       - name: Git Slice Pull
-        uses: GitStartHQ/actions/GitSlicePull@git-slice
+        uses: GitStartHQ/actions/GitSlicePull@git-slice-action-updates
         with:
           upstream_git_email: gitstart@users.noreply.github.com
           upstream_git_username: ${{ env.UPSTREAM_GIT_USERNAME }}

@@ -1,0 +1,306 @@
+name: GitSlice v2 CI
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, synchronize]
+  push:
+    # It seems that we don't need to run git-slice pull in branches which already have PRs
+    # Since the `pull_request` `synchronize` will be triggered 
+    branches:
+      - main
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      commitMessage:
+        description: 'Commit message for the client?'
+        required: true
+      overide:
+        description: 'Overide pervious push (force push)? (false/true)'
+        default: 'false'
+        required: false
+      branch:
+        description: 'Which branch should be pushed to the client?'
+        default: 'contractors/SG-'
+        required: true
+      pushPr:
+        description: 'Create a PR with the same title and body on the client side? (false/true)'
+        default: 'false'
+        required: false
+      no_cache:
+        description: 'Disable cache? true/false'
+        default: 'true'
+        required: false
+      rebaseBranch:
+        description: 'Rebase the sliced branch with the main branch? (false/true)'
+        default: 'false'
+        required: false
+  issue_comment: 
+    types: [created]
+env:
+  GIT_SLICE_DEFAULT_BRANCH: ${{ secrets.SLICE_DEFAULT_BRANCH }}
+  UPSTREAM_GIT_USERNAME: ${{ secrets.USERNAME }}
+  SLICE_GIT_USERNAME: ${{ secrets.USERNAME }}
+  SLICE_GIT_EMAIL: ${{ secrets.EMAIL }}
+  UPSTREAM_GIT_TOKEN: ${{ secrets.PASSWORD }}
+
+jobs:
+  gitslice-pull:
+    runs-on: ubuntu-latest
+    if: |
+      ${{
+        github.event_name == 'workflow_dispatch' || 
+        github.event_name == 'schedule' ||
+        github.event_name == 'push' ||
+        github.event_name == 'pull_request' || 
+        (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/git-slice push'))
+      }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+      - name: Git Slice Pull
+        uses: GitStartHQ/actions/GitSlicePull@git-slice
+        with:
+          upstream_git_email: gitstart@users.noreply.github.com
+          upstream_git_username: ${{ env.UPSTREAM_GIT_USERNAME }}
+          upstream_git_token: ${{ env.UPSTREAM_GIT_TOKEN }}
+          slice_default_branch: ${{ env.GIT_SLICE_DEFAULT_BRANCH }}
+  gitslice-push:
+    needs: gitslice-pull
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.GITSLICE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config --global user.email ${{ env.SLICE_GIT_EMAIL }}
+          git config --global user.name  ${{ env.SLICE_GIT_USERNAME }}
+          git config --global pull.rebase true
+          
+      - name: Merge main/master
+        run: |
+          git fetch -f
+          git branch
+          git checkout ${{ github.event.inputs.branch }}
+          git pull origin ${{ github.event.inputs.branch }}
+          git merge origin/${{ env.GIT_SLICE_DEFAULT_BRANCH }}
+          git push origin ${{ github.event.inputs.branch }}
+          git status
+             
+      - name: Git Slice Push
+        uses: GitStartHQ/actions/GitSlicePush@git-slice
+        with:
+          upstream_git_email: gitstart@users.noreply.github.com
+          upstream_git_username: ${{ env.UPSTREAM_GIT_USERNAME }}
+          upstream_git_token: ${{ env.UPSTREAM_GIT_TOKEN }}
+          slice_default_branch: ${{ env.GIT_SLICE_DEFAULT_BRANCH }}
+          custom_commit_message: ${{ github.event.inputs.commitMessage }}
+          slice_branch_to_push: ${{ github.event.inputs.branch }}
+          push_pr: ${{ github.event.inputs.pushPr }}
+          overide_previous_push: ${{ github.event.inputs.overide }}
+          no_cache: ${{ github.event.inputs.no_cache }}
+          rebase_branch: ${{ github.event.inputs.rebaseBranch }}
+
+  # Trigger git-slice push action for every commits on pull requests which have `GIT_SLICE_AUTO_PUSH` label
+  # This job uses PR title for commit message (removed `[...]` - which is usually used for ticket code
+  # WARNING: Make sure client is OK with force-push or same commit message for multiple commits
+  gitslice-auto-push:
+    needs: gitslice-pull
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'GIT_SLICE_AUTO_PUSH') }}
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.7.0
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Check out repository
+        uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.GITSLICE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config --global user.email ${{ env.SLICE_GIT_EMAIL }}
+          git config --global user.name  ${{ env.SLICE_GIT_USERNAME }}
+          git config --global pull.rebase true
+
+      - name: Get branch name (merge)
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
+
+      - name: Get branch name (pull request)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: echo "BRANCH_NAME=$(echo ${GITHUB_HEAD_REF})" >> $GITHUB_ENV
+
+      - name: Get commit message from title
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v4
+        id: get-commit-msg
+        with:
+          result-encoding: string
+          script: |
+            return String(context.payload.pull_request.title).replace(/\[.*\]/gi, '').trim()
+
+      - name: Merge main/master
+        run: |
+          git fetch -f
+          git branch
+          git checkout ${{ env.BRANCH_NAME }}
+          git pull origin ${{ env.BRANCH_NAME }}
+          git merge origin/${{ env.GIT_SLICE_DEFAULT_BRANCH }}
+          git push origin ${{ env.BRANCH_NAME }}
+          git status
+             
+      - name: Git Slice Push
+        uses: GitStartHQ/actions/GitSlicePush@git-slice
+        with:
+          upstream_git_email: gitstart@users.noreply.github.com
+          upstream_git_username: ${{ env.UPSTREAM_GIT_USERNAME }}
+          upstream_git_token: ${{ env.UPSTREAM_GIT_TOKEN }}
+          slice_default_branch: ${{ env.GIT_SLICE_DEFAULT_BRANCH }}
+          custom_commit_message: ${{ steps.get-commit-msg.outputs.result }}
+          slice_branch_to_push: ${{ env.BRANCH_NAME }}
+          push_pr: 'false'
+          overide_previous_push: 'true'
+          no_cache: 'true'
+
+  # Trigger git-slice push action with pull request comment: /git-slice push -m "<commit message>" [-f] [-r] [-pr]
+  # -f : Use force-push
+  # -r : Use rebase
+  # -pr : Raise PR on client side
+  gitslice-comment-push:
+    needs: gitslice-pull
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/git-slice push') }}
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.7.0
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Check out repository
+        uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.GITSLICE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config --global user.email ${{ env.SLICE_GIT_EMAIL }}
+          git config --global user.name  ${{ env.SLICE_GIT_USERNAME }}
+          git config --global pull.rebase true
+
+      - name: Get branch name
+        uses: actions/github-script@v4
+        id: get-pr
+        with:
+          script: |
+            const request = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            }
+            core.info(`Getting PR #${request.pull_number} from ${request.owner}/${request.repo}`)
+            try {
+              const result = await github.pulls.get(request)
+              return result.data
+            } catch (err) {
+              core.setFailed(`Request failed with error ${err}`)
+            }
+
+      - name: Read commit message for push options
+        uses: actions/github-script@v4
+        id: get-push-options
+        with:
+          result-encoding: string
+          script: |
+            try {
+              await github.reactions.createForIssueComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content: 'rocket'
+              });
+
+              const body = context.payload.comment.body.trim()
+              console.log("Detected PR comment: " + body);
+
+              const args = body.replace(/^\s*\/git-slice\s+push\s+/gi, "");
+              const matches = [...args.matchAll(/((-\w+)($|\s+("(.*)"|(\w+)))?)/gi)];
+              const friendlyOptions = {
+                "-m": "message",
+                "-r": "rebase",
+                "-f": "forcePush",
+                "-pr": "raisePR",
+              };
+
+              let pushOptions = {
+                "rebase": false,
+                "forcePush": false,
+                "raisePR": false
+              };
+
+              for (const match of matches) {
+                let value = true;
+
+                if (match[5] || match[4]) {
+                  value = (match[5] || match[4]).trim();
+                  value = JSON.parse(`{ "test": "${value}" }`).test;
+                }
+
+                if (friendlyOptions[match[2]]) {
+                  pushOptions = {
+                    ...pushOptions,
+                    [friendlyOptions[match[2]]]: value,
+                  };
+                }
+              }
+
+              console.log("Decoded Args: " + JSON.stringify(pushOptions));
+
+              return JSON.stringify(pushOptions);
+            } catch (err) {
+              core.setFailed(`Request failed with error ${err}`);
+            }
+
+      - name: Merge main/master
+        run: |
+          git fetch -f
+          git branch
+          git checkout ${{ env.BRANCH_NAME }}
+          git pull origin ${{ env.BRANCH_NAME }}
+          git merge origin/${{ env.GIT_SLICE_DEFAULT_BRANCH }}
+          git push origin ${{ env.BRANCH_NAME }}
+          git status
+        env:
+          BRANCH_NAME: ${{ fromJSON(steps.get-pr.outputs.result).head.ref }}
+             
+      - name: Git Slice Push
+        uses: GitStartHQ/actions/GitSlicePush@git-slice
+        with:
+          upstream_git_email: gitstart@users.noreply.github.com
+          upstream_git_username: ${{ env.UPSTREAM_GIT_USERNAME }}
+          upstream_git_token: ${{ env.UPSTREAM_GIT_TOKEN }}
+          slice_default_branch: ${{ env.GIT_SLICE_DEFAULT_BRANCH }}
+          custom_commit_message: ${{ env.MESSAGE }}
+          slice_branch_to_push: ${{ env.BRANCH_NAME }}
+          push_pr: ${{ env.RAISE_PR }}
+          overide_previous_push: ${{ env.FORCE_PUSH }}
+          rebase_branch: ${{ env.RAISE_PR }}
+          no_cache: 'true'
+        env:
+          BRANCH_NAME: ${{ fromJSON(steps.get-pr.outputs.result).head.ref }}
+          MESSAGE: ${{ fromJSON(steps.get-push-options.outputs.result).message }}
+          REBASE: ${{ fromJSON(steps.get-push-options.outputs.result).rebase }}
+          FORCE_PUSH: ${{ fromJSON(steps.get-push-options.outputs.result).forcePush }}
+          RAISE_PR: ${{ fromJSON(steps.get-push-options.outputs.result).raisePR }}

@@ -1,0 +1,6 @@
+{
+  "name": "git-slice-tools workflow",
+  "description": "git-slice-tools workflow template",
+  "iconName": "git-slice-ci",
+  "filePatterns": []
+}

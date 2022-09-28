@@ -10,7 +10,7 @@ on:
         description: 'Commit message for the client?'
         required: true
       overide:
-        description: 'Overide pervious push (force push)? (false/true)'
+        description: 'Overide previous push (force push)? (false/true)'
         default: 'false'
         required: false
       branch:
@@ -35,7 +35,7 @@ jobs:
         with:
           fetch-depth: 1
       - name: Git Slice Pull
-        uses: GitStartHQ/actions/GitSlicePull@git-slice
+        uses: GitStartHQ/actions/GitSlicePull@main
         with:
           upstream_git_email: gitstart@users.noreply.github.com
           upstream_git_username: ${{ env.UPSTREAM_GIT_USERNAME }}
@@ -69,7 +69,7 @@ jobs:
           git status
              
       - name: Git Slice Push
-        uses: GitStartHQ/actions/GitSlicePush@git-slice
+        uses: GitStartHQ/actions/GitSlicePush@main
         with:
           upstream_git_email: gitstart@users.noreply.github.com
           upstream_git_username: ${{ env.UPSTREAM_GIT_USERNAME }}
